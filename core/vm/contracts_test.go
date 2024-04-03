@@ -57,6 +57,7 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{9}):    &blake2F{},
 	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}): &schnorrSignatureVerification{},
 
 	common.BytesToAddress([]byte{0x0f, 0x0a}): &bls12381G1Add{},
 	common.BytesToAddress([]byte{0x0f, 0x0b}): &bls12381G1Mul{},
@@ -155,6 +156,7 @@ func benchmarkPrecompiled(addr string, test precompiledTest, bench *testing.B) {
 	}
 	p := allPrecompiles[common.HexToAddress(addr)]
 	in := common.Hex2Bytes(test.Input)
+
 	reqGas := p.RequiredGas(in)
 
 	var (
@@ -191,6 +193,18 @@ func benchmarkPrecompiled(addr string, test precompiledTest, bench *testing.B) {
 			return
 		}
 	})
+}
+
+// Benchmarks the sample inputs from the SchnorrSignatureVerification precompile.
+func BenchmarkPrecompiledSchnorrSignatureVerificationGas(bench *testing.B) {
+	t := precompiledTest{
+		Input: "035906625a56006af1e0908778ae3e313fea9bcee85531a91751575d5842f10bb6" +
+			"6fc48f0583170fa3a494518b3126847cdbe9b77c65722a6e8ab22853c4949fb5d9e2849725ed62beca748681607d6b00f91bfcc29cac29a20fc08d8794a41ced" +
+			"ea83cdcdd06bf61e414054115a551e23133711d0507dcbc07a4bab7dc4581935",
+		Expected: "0000000000000000000000000000000000000000000000000000000000000001",
+		Name:     "",
+	}
+	benchmarkPrecompiled("0x0b", t, bench)
 }
 
 // Benchmarks the sample inputs from the ECRECOVER precompile.
