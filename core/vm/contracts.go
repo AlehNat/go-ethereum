@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4/schnorr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -81,15 +82,16 @@ var PrecompiledContractsIstanbul = map[common.Address]PrecompiledContract{
 // PrecompiledContractsBerlin contains the default set of pre-compiled Ethereum
 // contracts used in the Berlin release.
 var PrecompiledContractsBerlin = map[common.Address]PrecompiledContract{
-	common.BytesToAddress([]byte{1}): &ecrecover{},
-	common.BytesToAddress([]byte{2}): &sha256hash{},
-	common.BytesToAddress([]byte{3}): &ripemd160hash{},
-	common.BytesToAddress([]byte{4}): &dataCopy{},
-	common.BytesToAddress([]byte{5}): &bigModExp{eip2565: true},
-	common.BytesToAddress([]byte{6}): &bn256AddIstanbul{},
-	common.BytesToAddress([]byte{7}): &bn256ScalarMulIstanbul{},
-	common.BytesToAddress([]byte{8}): &bn256PairingIstanbul{},
-	common.BytesToAddress([]byte{9}): &blake2F{},
+	common.BytesToAddress([]byte{1}):    &ecrecover{},
+	common.BytesToAddress([]byte{2}):    &sha256hash{},
+	common.BytesToAddress([]byte{3}):    &ripemd160hash{},
+	common.BytesToAddress([]byte{4}):    &dataCopy{},
+	common.BytesToAddress([]byte{5}):    &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{6}):    &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{7}):    &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{9}):    &blake2F{},
+	common.BytesToAddress([]byte{0x0a}): &schnorrSignatureVerification{},
 }
 
 // PrecompiledContractsCancun contains the default set of pre-compiled Ethereum
@@ -649,6 +651,7 @@ func (c *blake2F) Run(input []byte) ([]byte, error) {
 
 var (
 	errBLS12381InvalidInputLength          = errors.New("invalid input length")
+	errSchnorrInvalidInputLength           = errors.New("invalid input length")
 	errBLS12381InvalidFieldElementTopBytes = errors.New("invalid field element top bytes")
 	errBLS12381G1PointSubgroup             = errors.New("g1 point is not on correct subgroup")
 	errBLS12381G2PointSubgroup             = errors.New("g2 point is not on correct subgroup")
@@ -1126,6 +1129,37 @@ func (b *kzgPointEvaluation) Run(input []byte) ([]byte, error) {
 	}
 
 	return common.Hex2Bytes(blobPrecompileReturnValue), nil
+}
+
+type schnorrSignatureVerification struct{}
+
+// RequiredGas estimates the gas required for running the point evaluation precompile.
+func (b *schnorrSignatureVerification) RequiredGas(input []byte) uint64 {
+	return params.SchnorrSignatureVerificationGas
+}
+
+func (b *schnorrSignatureVerification) Run(input []byte) ([]byte, error) {
+	// "input" is (publicKey(33), signature(64), messageHash(32))
+	if len(input) != 129 {
+		return nil, errSchnorrInvalidInputLength
+	}
+	pubKeyBytes := make([]byte, 33)
+	copy(pubKeyBytes, input[0:33])
+
+	sigBytes := make([]byte, 64)
+	copy(sigBytes, input[33:97])
+
+	messageHash := make([]byte, 32)
+	copy(messageHash, input[97:129])
+	pubKey, _ := schnorr.ParsePubKey(pubKeyBytes)
+	signature, _ := schnorr.ParseSignature(sigBytes)
+	verified := signature.Verify(messageHash[:], pubKey)
+
+	result := []byte{0}
+	if verified {
+		result = []byte{1}
+	}
+	return common.LeftPadBytes(result, 32), nil
 }
 
 // kZGToVersionedHash implements kzg_to_versioned_hash from EIP-4844
